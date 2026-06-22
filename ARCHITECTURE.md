@@ -6,7 +6,7 @@
 saferelay-py/
 ├── main.py                      # 入口：创建依赖、注册 handler、启动
 ├── config.py                    # 配置，从环境变量读取
-├── .clinerules                  # 项目规则
+├── STANDARDS.md                 # 项目规范
 ├── ARCHITECTURE.md              # 架构文档（本文件）
 ├── requirements.txt             # 依赖清单
 ├── .env.example                 # 环境变量模板
