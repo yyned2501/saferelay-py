@@ -24,3 +24,8 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Temp files
+task.txt
+refactor_task.txt
+verify_imports.sh
