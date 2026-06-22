@@ -213,10 +213,21 @@ class ForwardService:
                 else:
                     target = {"chat_id": self.admin_uid}
 
-                await self.bot.forward_messages(
+                fwd_messages = await self.bot.forward_messages(
                     target["chat_id"], user_id, msg_id,
                     message_thread_id=target.get("message_thread_id"),
                 )
+                # 存储 ForwardMapping（确保管理员回复能找到用户）
+                if fwd_messages:
+                    first = fwd_messages[0] if isinstance(fwd_messages, list) else fwd_messages
+                    if first and hasattr(first, "id"):
+                        await self.db.store_forward_mapping(
+                            fwd_msg_id=first.id,
+                            source_chat=user_id,
+                            source_msg_id=msg_id,
+                            target_chat=target.get("chat_id"),
+                            thread_id=target.get("message_thread_id"),
+                        )
                 forwarded += 1
             except Exception as e:
                 logger.error("pending_forward_failed", {"user_id": user_id, "message_id": msg_id, "error": str(e)})

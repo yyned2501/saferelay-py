@@ -182,16 +182,6 @@ class Database:
     async def get_forward_mapping(self, fwd_msg_id: int) -> Optional[Dict[str, Any]]:
         """根据转发消息 ID 获取原始映射。"""
         async with self._session() as session:
-            row = await session.get(ForwardMapping, fwd_msg_id)
-            if row:
-                return {
-                    "fwd_msg_id": row.fwd_msg_id,
-                    "source_chat": row.source_chat,
-                    "source_msg_id": row.source_msg_id,
-                    "target_chat": row.target_chat,
-                    "thread_id": row.thread_id,
-                }
-            # 没有用 id 主键查，用 fwd_msg_id 列查
             result = await session.execute(
                 select(ForwardMapping).where(ForwardMapping.fwd_msg_id == fwd_msg_id)
             )

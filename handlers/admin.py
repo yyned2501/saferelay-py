@@ -25,8 +25,8 @@ def register(
 ) -> None:
     """注册管理员命令处理器。"""
 
-    # 管理员过滤器（filters.create 要求同步函数）
-    def admin_filter(_, __, message: Message) -> bool:
+    # 管理员过滤器（filters.create 会调用 func(client, update) — 2 个参数）
+    def admin_filter(client, message: Message) -> bool:
         user_id = message.from_user.id if message.from_user else 0
         return security_svc.is_admin(user_id)
 
