@@ -2,7 +2,7 @@
 
 from typing import Any, Optional
 
-from core.bot import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Message, filters
+from core.bot import ParseMode, Bot, InlineKeyboardButton, InlineKeyboardMarkup, Message, filters
 from core.database import Database
 from core.logger import get_logger
 from services.forward import ForwardService
@@ -25,8 +25,8 @@ def register(
 ) -> None:
     """注册管理员命令处理器。"""
 
-    # 管理员过滤器
-    async def admin_filter(_, __, message: Message) -> bool:
+    # 管理员过滤器（filters.create 要求同步函数）
+    def admin_filter(_, __, message: Message) -> bool:
         user_id = message.from_user.id if message.from_user else 0
         return security_svc.is_admin(user_id)
 
@@ -68,7 +68,7 @@ def register(
                 [InlineKeyboardButton("📊 统计信息", callback_data="submenu_stats")],
             ]
         )
-        await message.reply_text(text, parse_mode="HTML", reply_markup=keyboard)
+        await message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=keyboard)
 
     ### ---- /help (admin) ---- ###
 
@@ -95,7 +95,7 @@ def register(
             "/cachestats - 查看缓存统计\n"
             "/clearcache - 清空缓存\n\n"
             "<b>快捷操作：</b> 回复用户消息即可转发",
-            parse_mode="HTML",
+            parse_mode=ParseMode.HTML,
         )
 
     ### ---- /ban ---- ###
@@ -109,7 +109,7 @@ def register(
             return
         await security_svc.ban_user(target_id)
         await db.remove_verified(target_id)
-        await message.reply_text(f"🚫 用户 <code>{target_id}</code> 已被封禁。", parse_mode="HTML")
+        await message.reply_text(f"🚫 用户 <code>{target_id}</code> 已被封禁。", parse_mode=ParseMode.HTML)
 
     ### ---- /unban ---- ###
 
@@ -121,7 +121,7 @@ def register(
             await message.reply_text("⚠️ 格式错误。请回复用户消息发送 /unban，或发送 /unban 123456")
             return
         await security_svc.unban_user(target_id)
-        await message.reply_text(f"✅ 用户 <code>{target_id}</code> 已解封。", parse_mode="HTML")
+        await message.reply_text(f"✅ 用户 <code>{target_id}</code> 已解封。", parse_mode=ParseMode.HTML)
 
     ### ---- /trust ---- ###
 
@@ -133,7 +133,7 @@ def register(
             await message.reply_text("📋 请回复用户消息或发送 /trust 123456 来信任用户")
             return
         await security_svc.add_whitelist(target_id)
-        await message.reply_text(f"✅ 已信任用户 <code>{target_id}</code>", parse_mode="HTML")
+        await message.reply_text(f"✅ 已信任用户 <code>{target_id}</code>", parse_mode=ParseMode.HTML)
 
     ### ---- /untrust ---- ###
 
@@ -145,7 +145,7 @@ def register(
             await message.reply_text("📋 请回复用户消息或发送 /untrust 123456 来取消信任")
             return
         await security_svc.remove_whitelist(target_id)
-        await message.reply_text(f"✅ 已取消信任用户 <code>{target_id}</code>", parse_mode="HTML")
+        await message.reply_text(f"✅ 已取消信任用户 <code>{target_id}</code>", parse_mode=ParseMode.HTML)
 
     ### ---- /reset ---- ###
 
@@ -161,12 +161,12 @@ def register(
         if await security_svc.is_whitelisted(target_id):
             await message.reply_text(
                 f"⚠️ 用户 <code>{target_id}</code> 在白名单中，无需验证即可发送消息。",
-                parse_mode="HTML",
+                parse_mode=ParseMode.HTML,
             )
             return
 
         await db.remove_verified(target_id)
-        await message.reply_text(f"🔄 用户 <code>{target_id}</code> 验证状态已取消。", parse_mode="HTML")
+        await message.reply_text(f"🔄 用户 <code>{target_id}</code> 验证状态已取消。", parse_mode=ParseMode.HTML)
 
     ### ---- /welcome ---- ###
 
@@ -201,7 +201,7 @@ def register(
         """广播消息。"""
         parts = message.text.split(maxsplit=1)
         if len(parts) < 2:
-            await message.reply_text("⚠️ 用法：/broadcast 消息内容\n\n支持 HTML 格式", parse_mode="HTML")
+            await message.reply_text("⚠️ 用法：/broadcast 消息内容\n\n支持 HTML 格式", parse_mode=ParseMode.HTML)
             return
 
         msg_text = parts[1].strip()
@@ -214,7 +214,7 @@ def register(
 
         for user in users:
             try:
-                await bot.send_message(user["user_id"], msg_text, parse_mode="HTML")
+                await bot.send_message(user["user_id"], msg_text, parse_mode=ParseMode.HTML)
                 sent += 1
             except Exception:
                 failed += 1
@@ -224,7 +224,7 @@ def register(
 
         await status.edit_text(
             f"✅ 广播完成\n\n已发送：{sent}/{total}\n失败：{failed}",
-            parse_mode="HTML",
+            parse_mode=ParseMode.HTML,
         )
 
     ### ---- /cleanup ---- ###
@@ -243,7 +243,7 @@ def register(
     @bot.on_message(filters.command("cachestats") & admin_filter_obj)
     async def on_cachestats(client: Any, message: Message) -> None:
         """查看缓存统计。"""
-        await message.reply_text("📊 缓存统计信息\n\n<i>当前版本使用 SQLite，缓存由数据库管理。</i>", parse_mode="HTML")
+        await message.reply_text("📊 缓存统计信息\n\n<i>当前版本使用 SQLite，缓存由数据库管理。</i>", parse_mode=ParseMode.HTML)
 
     ### ---- /clearcache ---- ###
 
@@ -258,6 +258,11 @@ def register(
     async def on_admin_message(client: Any, message: Message) -> None:
         """处理管理员普通消息（回复转发消息）。"""
         await forward_svc.handle_admin_reply(message)
+
+    @bot.on_edited_message(admin_filter_obj)
+    async def on_admin_edit(client: Any, message: Message) -> None:
+        """同步管理员编辑消息到用户。"""
+        await forward_svc.sync_admin_edit(message)
 
     logger.info("admin_handlers_registered")
 

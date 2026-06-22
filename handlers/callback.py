@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from core.bot import Bot, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, filters
+from core.bot import Bot, ParseMode, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, filters
 from core.database import Database
 from core.logger import get_logger
 from services.forward import ForwardService
@@ -86,7 +86,7 @@ def register(
                     await bot.send_message(
                         forward_svc.admin_uid,
                         f"✅ <b>新用户验证通过</b>\n\n🆔 <code>{user_id}</code> ({name}){username_line}",
-                        parse_mode="HTML",
+                        parse_mode=ParseMode.HTML,
                         reply_markup=InlineKeyboardMarkup(
                             inline_keyboard=[[
                                 InlineKeyboardButton("👤 打开用户资料", url=f"tg://user?id={user_id}")
@@ -134,7 +134,7 @@ def register(
             return
 
         text, keyboard = await builder()
-        await bot.edit_message_text(chat_id, msg_id, text, parse_mode="HTML", reply_markup=keyboard)
+        await bot.edit_message_text(chat_id, msg_id, text, parse_mode=ParseMode.HTML, reply_markup=keyboard)
         await callback.answer()
 
     @bot.on_callback_query(filters.regex(r"^(submenu_|toggle_|back_to_|refresh_|users_|user_|forward_mode|reset_spam)"))

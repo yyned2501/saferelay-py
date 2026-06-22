@@ -1,7 +1,11 @@
 """SafeRelay 配置模块，从环境变量读取配置。"""
 
 import os
+from dotenv import load_dotenv
 from typing import List, Optional
+
+# 加载 .env 文件
+load_dotenv()
 
 
 class Config:
@@ -17,6 +21,17 @@ class Config:
         # 话题群组
         raw_group_id: str = os.getenv("GROUP_ID", "")
         self.group_id: Optional[int] = int(raw_group_id.strip()) if raw_group_id.strip() else None
+
+        # MTProto API 凭证（Kurigram/Pyrogram 必需）
+        self.api_id: int = int(os.getenv("API_ID", "0"))
+        self.api_hash: str = os.getenv("API_HASH", "")
+
+        # 代理配置
+        raw_proxy_enabled: str = os.getenv("PROXY_ENABLED", "true")
+        self.proxy_enabled: bool = raw_proxy_enabled.lower() in ("true", "1", "yes")
+        self.proxy_scheme: str = os.getenv("PROXY_SCHEME", "socks5")
+        self.proxy_host: str = os.getenv("PROXY_HOST", "192.168.31.10")
+        self.proxy_port: int = int(os.getenv("PROXY_PORT", "7890"))
 
         # 可选配置
         self.welcome_msg: str = os.getenv("WELCOME_MSG", "")

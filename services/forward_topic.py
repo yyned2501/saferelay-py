@@ -6,7 +6,7 @@ import asyncio
 import time
 from typing import Any, Dict, Optional
 
-from core.bot import Bot
+from core.bot import ParseMode, Bot
 from core.database import Database
 from core.logger import get_logger
 
@@ -125,6 +125,16 @@ class TopicManager:
         if thread_id:
             return {"thread_id": thread_id, "newly_created": False}
 
+        # 检查群组是否为论坛群组
+        try:
+            chat = await self.bot.get_chat(self.group_id)
+            if not chat or not chat.is_forum:
+                logger.error("group_not_forum", {"group_id": self.group_id})
+                return None
+        except Exception as e:
+            logger.error("check_forum_failed", {"group_id": self.group_id, "error": str(e)})
+            return None
+
         display_name = ""
         if profile:
             display_name = f"{profile.get('first_name', '')} {profile.get('last_name', '')}".strip()
@@ -156,7 +166,7 @@ class TopicManager:
                 self.group_id,
                 "\n".join(welcome_lines),
                 message_thread_id=new_thread_id,
-                parse_mode="HTML",
+                parse_mode=ParseMode.HTML,
             )
 
             logger.info("user_topic_created", {"user_id": user_id, "thread_id": new_thread_id})

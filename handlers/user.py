@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from core.bot import Bot, Message, filters
+from core.bot import ParseMode, Bot, Message, filters
 from core.database import Database
 from core.logger import get_logger
 from services.forward import ForwardService
@@ -28,10 +28,14 @@ def register(
 ) -> None:
     """注册用户消息处理器。"""
 
-    @bot.on_message(filters.private & filters.text & ~filters.command(["start"]))
+    @bot.on_message(filters.private & ~filters.command(["start", "help", "menu"]))
     async def on_guest_message(client: Any, message: Message) -> None:
         """处理用户私聊消息（非命令）。"""
         user_id = message.from_user.id if message.from_user else message.chat.id
+
+        # ⛔ 管理员消息跳过（管理员走 admin handler）
+        if user_id in forward_svc.admin_ids:
+            return
 
         # 白名单用户直接转发
         if await security_svc.is_whitelisted(user_id):
@@ -50,7 +54,7 @@ def register(
             if is_union_banned:
                 await message.reply_text(
                     "🚫 <b>您已被联合封禁。</b>\n\n您的账号因违反服务条款被全局封禁。如有疑问，请联系管理员。",
-                    parse_mode="HTML",
+                    parse_mode=ParseMode.HTML,
                 )
                 return
 
@@ -61,11 +65,11 @@ def register(
                 await bot.send_message(
                     forward_svc.admin_uid,
                     f"🚨 <b>检测到欺诈用户</b>\n\nUID: <code>{user_id}</code>\n该用户出现在欺诈数据库中，已自动拦截。",
-                    parse_mode="HTML",
+                    parse_mode=ParseMode.HTML,
                 )
             await message.reply_text(
                 "🚫 <b>服务不可用</b>\n\n您的账号存在异常，无法使用本服务。",
-                parse_mode="HTML",
+                parse_mode=ParseMode.HTML,
             )
             return
 
@@ -78,7 +82,7 @@ def register(
                     await bot.send_message(
                         forward_svc.admin_uid,
                         f"🗑 <b>垃圾消息拦截</b>\n\nUID: <code>{user_id}</code>\n原因: {spam_check['reason']}\n\n<i>消息已拦截，未转发给管理员</i>",
-                        parse_mode="HTML",
+                        parse_mode=ParseMode.HTML,
                     )
                 await message.reply_text("🚫 您的消息因违反规则被拦截。如有疑问请联系管理员。")
                 return
@@ -119,7 +123,7 @@ def register(
             await bot.send_message(
                 user_id,
                 text,
-                parse_mode="HTML",
+                parse_mode=ParseMode.HTML,
                 reply_markup=verify_svc.generate_keyboard(question),
             )
         else:
@@ -155,7 +159,7 @@ def register(
             await bot.send_message(
                 user_id,
                 text,
-                parse_mode="HTML",
+                parse_mode=ParseMode.HTML,
                 reply_markup=verify_svc.generate_keyboard(question),
             )
         else:
@@ -170,7 +174,15 @@ def register(
             "• 如未验证，会先进行简单问答验证\n"
             "• 管理员回复的消息会转发给您\n\n"
             "<i>如有问题请联系管理员。</i>",
-            parse_mode="HTML",
+            parse_mode=ParseMode.HTML,
         )
+
+    @bot.on_edited_message(filters.private)
+    async def on_guest_edit(client: Any, message: Message) -> None:
+        """同步用户编辑消息到管理员。"""
+        user_id = message.from_user.id if message.from_user else message.chat.id
+        if user_id in forward_svc.admin_ids:
+            return
+        await forward_svc.sync_guest_edit(message)
 
     logger.info("user_handlers_registered")

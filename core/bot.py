@@ -19,10 +19,11 @@ from pyrogram.types import (
     ReplyKeyboardRemove,
     ForceReply,
 )
-from pyrogram.enums import ChatAction, ParseMode
+from pyrogram.enums import ChatAction, ParseMode as _ParseMode
+ParseMode = _ParseMode
 from pyrogram import filters as _pyro_filters
 from pyrogram import Client as _PyroClient
-from pyrogram.handlers import MessageHandler, CallbackQueryHandler
+from pyrogram.handlers import MessageHandler, CallbackQueryHandler, EditedMessageHandler
 
 from core.logger import get_logger
 
@@ -32,22 +33,42 @@ logger = get_logger("core.bot")
 class Bot:
     """Bot 封装，包装 Pyrogram/Kurigram Client。"""
 
-    def __init__(self, bot_token: str, api_id: int = 0, api_hash: str = ""):
+    def __init__(self, bot_token: str, api_id: int = 0, api_hash: str = "",
+                 proxy: Optional[Dict[str, Any]] = None):
         """初始化 Bot。
 
         Args:
             bot_token: Telegram Bot Token
             api_id: 可选，MTProto API ID（未提供时 Pyrogram 使用默认值）
             api_hash: 可选，MTProto API Hash
+            proxy: 可选 SOCKS5 代理，如 {"scheme": "socks5", "hostname": "...", "port": 7890}
         """
         self._token = bot_token
-        self._client = _PyroClient(
+        kwargs: Dict[str, Any] = dict(
             name="saferelay",
             bot_token=bot_token,
             api_id=api_id or 6,
             api_hash=api_hash or "",
             in_memory=True,
         )
+        if proxy:
+            kwargs["proxy"] = proxy
+        self._client = _PyroClient(**kwargs)
+
+    # ---- 工具方法 ----
+
+    @staticmethod
+    def _normalize_parse_mode(parse_mode: Any) -> Any:
+        """将字符串 parse_mode 转为 ParseMode 枚举（Kurigram 要求枚举值）。"""
+        if isinstance(parse_mode, str):
+            mode_map = {
+                "html": _ParseMode.HTML,
+                "markdown": _ParseMode.MARKDOWN,
+                "default": _ParseMode.DEFAULT,
+                "disabled": _ParseMode.DISABLED,
+            }
+            return mode_map.get(parse_mode.lower(), _ParseMode.DEFAULT)
+        return parse_mode
 
     # ---- 事件注册 ----
 
@@ -71,12 +92,24 @@ class Bot:
             return func
         return decorator
 
+    def on_edited_message(self, filter=None, group: int = 0) -> Callable:
+        """装饰器：注册编辑消息处理器。"""
+        def decorator(func: Callable) -> Callable:
+            self._client.add_handler(
+                EditedMessageHandler(func, filter),
+                group,
+            )
+            return func
+        return decorator
+
     # ---- 消息方法 ----
 
     async def send_message(
         self, chat_id: Union[int, str], text: str, **kwargs
     ) -> Optional[Message]:
         """发送消息。"""
+        if "parse_mode" in kwargs:
+            kwargs["parse_mode"] = self._normalize_parse_mode(kwargs["parse_mode"])
         return await self._client.send_message(chat_id, text, **kwargs)
 
     async def forward_messages(
@@ -104,6 +137,8 @@ class Bot:
         self, chat_id: Union[int, str], message_id: int, text: str, **kwargs
     ) -> Optional[Message]:
         """编辑消息文本。"""
+        if "parse_mode" in kwargs:
+            kwargs["parse_mode"] = self._normalize_parse_mode(kwargs["parse_mode"])
         return await self._client.edit_message_text(chat_id, message_id, text, **kwargs)
 
     async def delete_messages(

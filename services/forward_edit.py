@@ -4,7 +4,7 @@
 """
 from typing import Any, Dict, Optional
 
-from core.bot import Bot
+from core.bot import Bot, ParseMode
 from core.database import Database
 from core.logger import get_logger
 
@@ -36,7 +36,7 @@ class EditSyncManager:
             try:
                 await self.bot.edit_message_text(
                     notice["notice_chat"], notice["notice_msg_id"], edit_text,
-                    parse_mode="HTML",
+                    parse_mode=ParseMode.HTML,
                 )
                 return
             except Exception:

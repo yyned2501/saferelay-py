@@ -36,7 +36,19 @@ async def amain() -> None:
     http = HttpClient()
 
     # 初始化 Bot
-    bot = Bot(bot_token=cfg.config.bot_token)
+    proxy_cfg = None
+    if cfg.config.proxy_enabled:
+        proxy_cfg = {
+            "scheme": cfg.config.proxy_scheme,
+            "hostname": cfg.config.proxy_host,
+            "port": cfg.config.proxy_port,
+        }
+    bot = Bot(
+        bot_token=cfg.config.bot_token,
+        api_id=cfg.config.api_id,
+        api_hash=cfg.config.api_hash,
+        proxy=proxy_cfg,
+    )
 
     # 导入并注册 handler（延迟导入避免循环依赖）
     from services.forward import ForwardService
