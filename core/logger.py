@@ -3,7 +3,6 @@ import logging
 import os
 import re
 import sys
-from datetime import datetime
 from logging.handlers import TimedRotatingFileHandler
 from typing import Any, Dict
 
@@ -94,7 +93,7 @@ def init_logger(log_dir: str = "logs", log_level: int = logging.INFO) -> None:
         log_level: 日志级别
     """
     os.makedirs(log_dir, exist_ok=True)
-    log_file = os.path.join(log_dir, f"saferelay_{datetime.now().strftime('%Y%m%d')}.log")
+    log_file = os.path.join(log_dir, "saferelay.log")
 
     # 格式
     formatter = logging.Formatter(
