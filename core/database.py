@@ -7,143 +7,22 @@ import time
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import (
-    BigInteger, Integer, String, Text, func, select, delete, text,
-)
+from sqlalchemy import func, select, delete
 from sqlalchemy.ext.asyncio import (
     AsyncSession, async_sessionmaker, create_async_engine,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+from core.models import (
+    Base, VerifiedUser, TopicMapping, ForwardMapping, ReplyMapping,
+    BannedUser, WhitelistUser, RateLimit, VerifyLock, StatsMessage,
+    StatsActiveUser, AppConfig, PendingQueue, ThreadMapping, EditNotice,
+)
 from core.logger import get_logger
 
 logger = get_logger("core.database")
 
 DB_PATH = "data/saferelay.db"
 
-
-# ---- ORM 模型 ----
-
-class Base(DeclarativeBase):
-    """SQLAlchemy 声明式基类。"""
-    pass
-
-
-class VerifiedUser(Base):
-    """已验证用户表。"""
-    __tablename__ = "verified_users"
-    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    display_name: Mapped[str] = mapped_column(String(255), default="")
-    verified_at: Mapped[int] = mapped_column(Integer, default=0)
-
-
-class TopicMapping(Base):
-    """用户话题映射表。"""
-    __tablename__ = "topic_mapping"
-    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    thread_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    created_at: Mapped[int] = mapped_column(Integer, default=0)
-
-
-class ForwardMapping(Base):
-    """转发消息映射表。"""
-    __tablename__ = "forward_mapping"
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    fwd_msg_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    source_chat: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    source_msg_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    target_chat: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
-    thread_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
-    created_at: Mapped[int] = mapped_column(Integer, default=0)
-
-
-class ReplyMapping(Base):
-    """管理员回复映射表。"""
-    __tablename__ = "reply_mapping"
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    admin_msg_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    guest_chat: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    guest_msg_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    created_at: Mapped[int] = mapped_column(Integer, default=0)
-
-
-class BannedUser(Base):
-    """封禁用户表。"""
-    __tablename__ = "banned_users"
-    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    reason: Mapped[str] = mapped_column(String(500), default="")
-    banned_at: Mapped[int] = mapped_column(Integer, default=0)
-
-
-class WhitelistUser(Base):
-    """白名单用户表。"""
-    __tablename__ = "whitelist"
-    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    added_at: Mapped[int] = mapped_column(Integer, default=0)
-
-
-class RateLimit(Base):
-    """速率限制表。"""
-    __tablename__ = "rate_limits"
-    key: Mapped[str] = mapped_column(String(255), primary_key=True)
-    timestamps: Mapped[str] = mapped_column(Text, default="[]")
-
-
-class VerifyLock(Base):
-    """验证锁表。"""
-    __tablename__ = "verify_locks"
-    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    expires_at: Mapped[int] = mapped_column(Integer, nullable=False)
-
-
-class StatsMessage(Base):
-    """消息统计表。"""
-    __tablename__ = "stats_messages"
-    date: Mapped[str] = mapped_column(String(10), primary_key=True)
-    count: Mapped[int] = mapped_column(Integer, default=0)
-
-
-class StatsActiveUser(Base):
-    """活跃用户统计表。"""
-    __tablename__ = "stats_active_users"
-    date: Mapped[str] = mapped_column(String(10), primary_key=True)
-    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-
-
-class AppConfig(Base):
-    """配置表。"""
-    __tablename__ = "config"
-    key: Mapped[str] = mapped_column(String(255), primary_key=True)
-    value: Mapped[str] = mapped_column(Text, default="")
-
-
-class PendingQueue(Base):
-    """验证暂存消息队列。"""
-    __tablename__ = "pending_queue"
-    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    message_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    msg_data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    created_at: Mapped[int] = mapped_column(Integer, default=0)
-
-
-class ThreadMapping(Base):
-    """线程 → 用户映射表。"""
-    __tablename__ = "thread_mapping"
-    thread_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-
-
-class EditNotice(Base):
-    """编辑提示消息映射表。"""
-    __tablename__ = "edit_notices"
-    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    orig_msg_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    notice_chat: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    notice_msg_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    created_at: Mapped[int] = mapped_column(Integer, default=0)
-
-
-# ---- 数据库封装 ----
 
 class Database:
     """数据库封装，使用 SQLAlchemy async。
@@ -617,3 +496,38 @@ class Database:
                 PendingQueue.message_id == message_id,
             )
         )
+
+    # ---- 编辑通知（仅供 forward_edit 调用） ----
+
+    async def get_edit_notice(
+        self, user_id: int, orig_msg_id: int,
+    ) -> Optional[Dict[str, Any]]:
+        """获取编辑通知消息。"""
+        async with self._session() as session:
+            stmt = select(EditNotice).where(
+                EditNotice.user_id == user_id,
+                EditNotice.orig_msg_id == orig_msg_id,
+            )
+            result = await session.execute(stmt)
+            row = result.scalar_one_or_none()
+            if row:
+                return {
+                    "user_id": row.user_id,
+                    "orig_msg_id": row.orig_msg_id,
+                    "notice_chat": row.notice_chat,
+                    "notice_msg_id": row.notice_msg_id,
+                }
+            return None
+
+    async def store_edit_notice(
+        self, user_id: int, orig_msg_id: int,
+        notice_chat: int, notice_msg_id: int,
+    ) -> None:
+        """存储编辑通知映射。"""
+        async with self._session() as session:
+            await session.merge(EditNotice(
+                user_id=user_id, orig_msg_id=orig_msg_id,
+                notice_chat=notice_chat, notice_msg_id=notice_msg_id,
+                created_at=int(time.time()),
+            ))
+            await session.commit()

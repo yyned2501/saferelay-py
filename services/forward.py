@@ -1,78 +1,17 @@
-"""消息转发服务 — 双向转发、话题模式、媒体组、编辑同步。"""
+"""消息转发服务 — 双向转发、话题模式、媒体组、编辑同步。
 
-import asyncio
-import json
-import time
+对外只暴露 ForwardService 类，handlers 通过此类进行转发操作。
+"""
 from typing import Any, Dict, List, Optional
 
-from core.bot import Bot, InlineKeyboardMarkup, Message
+from core.bot import Bot, Message
 from core.database import Database
 from core.logger import get_logger
+from services.forward_topic import MediaGroupCollector, TopicManager
+from services.forward_edit import EditSyncManager
 from utils.helpers import TTLCache
 
 logger = get_logger("services.forward")
-
-# 媒体组缓冲配置
-MEDIA_GROUP_WAIT_MS = 300       # 等待 300ms 收集同组消息
-MEDIA_GROUP_MAX_WAIT_MS = 3000  # 最长等待 3000ms
-
-
-class MediaGroupCollector:
-    """媒体组消息收集器。"""
-
-    def __init__(self):
-        self._buffers: Dict[str, Dict[str, Any]] = {}
-
-    async def collect(self, msg: Message, handler) -> Any:
-        """收集媒体组消息，收集完毕后执行 handler。
-
-        Args:
-            msg: 当前消息
-            handler: 接收消息列表的异步函数
-
-        Returns:
-            handler 的返回值或 None（还在收集中）
-        """
-        group_id = msg.media_group_id
-        if not group_id:
-            return await handler([msg])
-
-        buf = self._buffers.get(group_id)
-        is_first = buf is None
-
-        if is_first:
-            buf = {
-                "messages": [],
-                "handler": handler,
-                "last_update": 0,
-                "event": asyncio.Event(),
-                "max_deadline": time.time() + MEDIA_GROUP_MAX_WAIT_MS / 1000,
-            }
-            self._buffers[group_id] = buf
-
-        buf["messages"].append(msg)
-        buf["last_update"] = time.time()
-
-        if not is_first:
-            buf["event"].set()
-            buf["event"].clear()
-            return None
-
-        # 首条消息：等待收集
-        while True:
-            remaining = buf["max_deadline"] - time.time()
-            if remaining <= 0:
-                break
-            wait = min(MEDIA_GROUP_WAIT_MS / 1000, remaining)
-            await asyncio.sleep(wait)
-            # 检查是否有新消息
-            since_last = time.time() - buf["last_update"]
-            if since_last >= MEDIA_GROUP_WAIT_MS / 1000:
-                break
-
-        self._buffers.pop(group_id, None)
-        buf["messages"].sort(key=lambda m: m.id)
-        return await handler(buf["messages"])
 
 
 class ForwardService:
@@ -89,12 +28,11 @@ class ForwardService:
         self.group_id = group_id
         self.admin_uid = admin_ids[0] if admin_ids else None
         self.media_collector = MediaGroupCollector()
-        # 线程创建 In-Flight 保护
-        self._topic_create_in_flight: Dict[str, asyncio.Future] = {}
-        # 缓存
         self._mode_cache = TTLCache(default_ttl_ms=60000)
-        self._topic_env_cache = TTLCache(default_ttl_ms=300000)
-        self._topic_alert_cache = TTLCache(default_ttl_ms=600000)
+
+        # 子模块
+        self.topic_mgr = TopicManager(db, bot, group_id)
+        self.edit_sync = EditSyncManager(db, bot, self.admin_uid)
 
     # ---- 转发模式 ----
 
@@ -126,87 +64,11 @@ class ForwardService:
         """检查话题模式前置条件。"""
         return bool(self.group_id and self.admin_uid)
 
-    # ---- 话题创建和管理 ----
+    # ---- 话题创建和管理（委托至 TopicManager） ----
 
     async def ensure_user_topic(self, user_id: int, profile: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
         """确保用户有话题，如果没有则创建。"""
-        if not self.group_id:
-            return None
-
-        # 检查已有映射
-        thread_id = await self.db.get_user_topic(user_id)
-        if thread_id:
-            return {"thread_id": thread_id, "newly_created": False}
-
-        # In-Flight 去重
-        key = str(user_id)
-        if key in self._topic_create_in_flight:
-            try:
-                return await self._topic_create_in_flight[key]
-            except Exception:
-                pass
-
-        future = asyncio.get_event_loop().create_future()
-        self._topic_create_in_flight[key] = future
-
-        try:
-            result = await self._ensure_user_topic_internal(user_id, profile)
-            future.set_result(result)
-            return result
-        except Exception as e:
-            future.set_exception(e)
-            raise
-        finally:
-            self._topic_create_in_flight.pop(key, None)
-
-    async def _ensure_user_topic_internal(self, user_id: int, profile: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
-        """内部：创建用户话题。"""
-        # 二次检查
-        thread_id = await self.db.get_user_topic(user_id)
-        if thread_id:
-            return {"thread_id": thread_id, "newly_created": False}
-
-        display_name = ""
-        if profile:
-            display_name = f"{profile.get('first_name', '')} {profile.get('last_name', '')}".strip()
-        if not display_name:
-            display_name = "访客"
-
-        title = f"{display_name}（{user_id}）"[:60]
-
-        try:
-            topic = await self.bot.create_forum_topic(self.group_id, title)
-            if not topic:
-                logger.error("create_topic_failed", {"user_id": user_id})
-                return None
-            new_thread_id = topic.id
-
-            await self.db.set_user_topic(user_id, new_thread_id)
-            await self.db.set_thread_mapping(new_thread_id, user_id)
-
-            # 发送欢迎消息到话题
-            welcome_lines = [
-                "👤 新访客对话",
-                f"UID：<code>{user_id}</code>",
-            ]
-            if profile:
-                if profile.get("username"):
-                    welcome_lines.append(f"用户名：@{profile['username']}")
-            welcome_lines.append("\n请在此话题内回复用户消息。")
-
-            await self.bot.send_message(
-                self.group_id,
-                "\n".join(welcome_lines),
-                message_thread_id=new_thread_id,
-                parse_mode="HTML",
-            )
-
-            logger.info("user_topic_created", {"user_id": user_id, "thread_id": new_thread_id})
-            return {"thread_id": new_thread_id, "newly_created": True}
-
-        except Exception as e:
-            logger.error("create_topic_error", {"user_id": user_id, "error": str(e)})
-            return None
+        return await self.topic_mgr.ensure_user_topic(user_id, profile)
 
     # ---- 消息转发 ----
 
@@ -269,7 +131,6 @@ class ForwardService:
             return fwd
         except Exception as e:
             logger.error("forward_single_failed", {"user_id": user_id, "error": str(e)})
-            # fallback: copy
             try:
                 copy = await msg.copy(
                     target["chat_id"],
@@ -317,57 +178,15 @@ class ForwardService:
             logger.error("admin_reply_failed", {"error": str(e)})
             await message.reply_text("⚠️ 回复发送失败。")
 
-    # ---- 编辑同步 ----
+    # ---- 编辑同步（委托至 EditSyncManager） ----
 
     async def sync_guest_edit(self, message: Message) -> None:
         """同步用户编辑消息。"""
-        orig_msg_id = message.id
-        user_id = message.from_user.id if message.from_user else message.chat.id
-
-        fwd_id = await self.db.get_original_mapping(orig_msg_id)
-        if not fwd_id:
-            return
-
-        # 尝试查找已有的编辑通知并更新
-        notice = await self.db.get_edit_notice(user_id, orig_msg_id)
-        edit_text = f"✏️ {message.text or '(无文本内容)'}"
-
-        if notice:
-            try:
-                await self.bot.edit_message_text(
-                    notice["notice_chat"], notice["notice_msg_id"], edit_text,
-                    parse_mode="HTML",
-                )
-                return
-            except Exception:
-                pass
-
-        # 发送新的编辑通知
-        mapping = await self.db.get_forward_mapping(fwd_id)
-        target_chat = mapping["target_chat"] if mapping else self.admin_uid
-        target_thread = mapping.get("thread_id")
-
-        kwargs = {"parse_mode": "HTML"}
-        if target_thread:
-            kwargs["message_thread_id"] = target_thread
-
-        sent = await self.bot.send_message(target_chat, edit_text, **kwargs)
-        if sent:
-            await self.db.store_edit_notice(user_id, orig_msg_id, target_chat, sent.id)
+        await self.edit_sync.sync_guest_edit(message)
 
     async def sync_admin_edit(self, message: Message) -> None:
         """同步管理员编辑消息。"""
-        mapping = await self.db.get_reply_mapping(message.id)
-        if not mapping:
-            return
-
-        try:
-            await self.bot.edit_message_text(
-                mapping["guest_chat"], mapping["guest_msg_id"],
-                message.text or "",
-            )
-        except Exception as e:
-            logger.error("admin_edit_sync_failed", {"error": str(e)})
+        await self.edit_sync.sync_admin_edit(message)
 
     # ---- 暂存队列 ----
 
@@ -394,7 +213,6 @@ class ForwardService:
                 else:
                     target = {"chat_id": self.admin_uid}
 
-                # 使用 Pyrogram 的 forward_messages
                 await self.bot.forward_messages(
                     target["chat_id"], user_id, msg_id,
                     message_thread_id=target.get("message_thread_id"),
