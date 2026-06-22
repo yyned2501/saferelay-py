@@ -203,6 +203,15 @@ class Bot:
         """获取论坛话题信息。"""
         return await self._client.get_forum_topic(chat_id, topic_id)
 
+    async def set_commands(self) -> None:
+        """设置 Bot 命令列表。"""
+        from pyrogram.types import BotCommand
+        commands = [
+            BotCommand("menu", "打开管理面板"),
+            BotCommand("help", "显示帮助"),
+        ]
+        await self._client.set_bot_commands(commands)
+
     async def send_chat_action(
         self, chat_id: Union[int, str], action: str
     ) -> bool:

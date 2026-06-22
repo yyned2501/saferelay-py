@@ -69,11 +69,14 @@ async def amain() -> None:
     # 注册 handler
     from handlers import user, admin, callback
     user.register(bot, db, forward_svc, verify_svc, security_svc, stats_svc)
-    admin.register(bot, db, forward_svc, security_svc, stats_svc)
+    admin.register(bot, db, forward_svc, security_svc, stats_svc, admin_ids=cfg.config.admin_ids)
     callback.register(bot, db, forward_svc, verify_svc, security_svc, stats_svc)
 
     logger.info("all_handlers_registered")
     print("[INFO] SafeRelay-Py 启动完成，等待消息...")
+
+    # 注册 Bot 命令列表
+    await bot.set_commands()
 
     # 启动 bot 并保持运行
     await bot.start()

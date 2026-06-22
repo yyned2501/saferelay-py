@@ -1,6 +1,6 @@
 """管理员命令处理 — /menu, /ban, /unban, /trust, /untrust 等。"""
 
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 from core.bot import ParseMode, Bot, InlineKeyboardButton, InlineKeyboardMarkup, Message, filters
 from core.database import Database
@@ -22,19 +22,13 @@ def register(
     forward_svc: ForwardService,
     security_svc: SecurityService,
     stats_svc: StatsService,
+    admin_ids: List[int],
 ) -> None:
     """注册管理员命令处理器。"""
 
-    # 管理员过滤器（filters.create 会调用 func(client, update) — 2 个参数）
-    def admin_filter(client, message: Message) -> bool:
-        user_id = message.from_user.id if message.from_user else 0
-        return security_svc.is_admin(user_id)
-
-    admin_filter_obj = filters.create(admin_filter)
-
     ### ---- /menu ---- ###
 
-    @bot.on_message(filters.command("menu") & admin_filter_obj)
+    @bot.on_message(filters.command("menu") & filters.user(admin_ids))
     async def on_menu(client: Any, message: Message) -> None:
         """显示管理面板。"""
         welcome_msg = await db.get_config(CONFIG_WELCOME_MSG, "")
@@ -72,7 +66,7 @@ def register(
 
     ### ---- /help (admin) ---- ###
 
-    @bot.on_message(filters.command("help") & admin_filter_obj)
+    @bot.on_message(filters.command("help") & filters.user(admin_ids))
     async def on_admin_help(client: Any, message: Message) -> None:
         """显示管理员帮助。"""
         await message.reply_text(
@@ -100,7 +94,7 @@ def register(
 
     ### ---- /ban ---- ###
 
-    @bot.on_message(filters.command("ban") & admin_filter_obj)
+    @bot.on_message(filters.command("ban") & filters.user(admin_ids))
     async def on_ban(client: Any, message: Message) -> None:
         """封禁用户。"""
         target_id = await _get_target_id(message, db, forward_svc)
@@ -113,7 +107,7 @@ def register(
 
     ### ---- /unban ---- ###
 
-    @bot.on_message(filters.command("unban") & admin_filter_obj)
+    @bot.on_message(filters.command("unban") & filters.user(admin_ids))
     async def on_unban(client: Any, message: Message) -> None:
         """解封用户。"""
         target_id = await _get_target_id(message, db, forward_svc)
@@ -125,7 +119,7 @@ def register(
 
     ### ---- /trust ---- ###
 
-    @bot.on_message(filters.command("trust") & admin_filter_obj)
+    @bot.on_message(filters.command("trust") & filters.user(admin_ids))
     async def on_trust(client: Any, message: Message) -> None:
         """信任用户（白名单）。"""
         target_id = await _get_target_id(message, db, forward_svc)
@@ -137,7 +131,7 @@ def register(
 
     ### ---- /untrust ---- ###
 
-    @bot.on_message(filters.command("untrust") & admin_filter_obj)
+    @bot.on_message(filters.command("untrust") & filters.user(admin_ids))
     async def on_untrust(client: Any, message: Message) -> None:
         """取消信任。"""
         target_id = await _get_target_id(message, db, forward_svc)
@@ -149,7 +143,7 @@ def register(
 
     ### ---- /reset ---- ###
 
-    @bot.on_message(filters.command("reset") & admin_filter_obj)
+    @bot.on_message(filters.command("reset") & filters.user(admin_ids))
     async def on_reset(client: Any, message: Message) -> None:
         """重置用户验证状态。"""
         target_id = await _get_target_id(message, db, forward_svc)
@@ -170,7 +164,7 @@ def register(
 
     ### ---- /welcome ---- ###
 
-    @bot.on_message(filters.command("welcome") & admin_filter_obj)
+    @bot.on_message(filters.command("welcome") & filters.user(admin_ids))
     async def on_welcome(client: Any, message: Message) -> None:
         """设置欢迎消息。"""
         parts = message.text.split(maxsplit=1)
@@ -183,7 +177,7 @@ def register(
 
     ### ---- /autoreply ---- ###
 
-    @bot.on_message(filters.command("autoreply") & admin_filter_obj)
+    @bot.on_message(filters.command("autoreply") & filters.user(admin_ids))
     async def on_autoreply(client: Any, message: Message) -> None:
         """设置自动回复。"""
         parts = message.text.split(maxsplit=1)
@@ -196,7 +190,7 @@ def register(
 
     ### ---- /broadcast ---- ###
 
-    @bot.on_message(filters.command("broadcast") & admin_filter_obj)
+    @bot.on_message(filters.command("broadcast") & filters.user(admin_ids))
     async def on_broadcast(client: Any, message: Message) -> None:
         """广播消息。"""
         parts = message.text.split(maxsplit=1)
@@ -229,7 +223,7 @@ def register(
 
     ### ---- /cleanup ---- ###
 
-    @bot.on_message(filters.command("cleanup") & admin_filter_obj)
+    @bot.on_message(filters.command("cleanup") & filters.user(admin_ids))
     async def on_cleanup(client: Any, message: Message) -> None:
         """清理失效话题。"""
         if not forward_svc.group_id:
@@ -240,26 +234,26 @@ def register(
 
     ### ---- /cachestats ---- ###
 
-    @bot.on_message(filters.command("cachestats") & admin_filter_obj)
+    @bot.on_message(filters.command("cachestats") & filters.user(admin_ids))
     async def on_cachestats(client: Any, message: Message) -> None:
         """查看缓存统计。"""
         await message.reply_text("📊 缓存统计信息\n\n<i>当前版本使用 SQLite，缓存由数据库管理。</i>", parse_mode=ParseMode.HTML)
 
     ### ---- /clearcache ---- ###
 
-    @bot.on_message(filters.command("clearcache") & admin_filter_obj)
+    @bot.on_message(filters.command("clearcache") & filters.user(admin_ids))
     async def on_clearcache(client: Any, message: Message) -> None:
         """清空缓存。"""
         await message.reply_text("✅ 缓存已清空。")
 
     ### ---- 普通回复（管理员回复用户消息） ---- ###
 
-    @bot.on_message(admin_filter_obj)
+    @bot.on_message(filters.user(admin_ids))
     async def on_admin_message(client: Any, message: Message) -> None:
         """处理管理员普通消息（回复转发消息）。"""
         await forward_svc.handle_admin_reply(message)
 
-    @bot.on_edited_message(admin_filter_obj)
+    @bot.on_edited_message(filters.user(admin_ids))
     async def on_admin_edit(client: Any, message: Message) -> None:
         """同步管理员编辑消息到用户。"""
         await forward_svc.sync_admin_edit(message)
