@@ -1,8 +1,10 @@
-"""日志模块 — 封装 logging，提供结构化日志和脱敏功能。"""
-
+"""日志模块 — 封装 logging，提供结构化日志、脱敏和文件输出。"""
 import logging
+import os
 import re
 import sys
+from datetime import datetime
+from logging.handlers import TimedRotatingFileHandler
 from typing import Any, Dict
 
 # 敏感字段模式
@@ -59,7 +61,7 @@ class SafeRelayLogger:
     def warn(self, action: str, error_or_data: Any = None, data: Dict[str, Any] = None) -> None:
         payload: Dict[str, Any] = {}
         if isinstance(error_or_data, Exception):
-            payload = {"error": str(error_or_data), ** (data or {})}
+            payload = {"error": str(error_or_data), **(data or {})}
         elif error_or_data is not None:
             payload = {**error_or_data, **(data or {})}
         else:
@@ -84,9 +86,41 @@ def get_logger(name: str) -> SafeRelayLogger:
     return _loggers[name]
 
 
-# 初始化根日志格式
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    stream=sys.stdout,
-)
+def init_logger(log_dir: str = "logs", log_level: int = logging.INFO) -> None:
+    """初始化根日志配置，同时输出到控制台和文件。
+
+    Args:
+        log_dir: 日志文件目录
+        log_level: 日志级别
+    """
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, f"saferelay_{datetime.now().strftime('%Y%m%d')}.log")
+
+    # 格式
+    formatter = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    # 根 logger
+    root = logging.getLogger()
+    root.setLevel(log_level)
+
+    # 清除已有 handler 避免重复
+    root.handlers.clear()
+
+    # 控制台输出
+    console = logging.StreamHandler(sys.stdout)
+    console.setFormatter(formatter)
+    root.addHandler(console)
+
+    # 文件输出（按日轮转）
+    file_handler = TimedRotatingFileHandler(
+        log_file, when="midnight", interval=1, backupCount=30, encoding="utf-8",
+    )
+    file_handler.setFormatter(formatter)
+    root.addHandler(file_handler)
+
+    logging.getLogger("core.logger").info(
+        "logger_init", {"file": log_file, "level": logging.getLevelName(log_level)},
+    )

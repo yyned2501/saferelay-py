@@ -32,6 +32,8 @@ def register(
     async def on_guest_message(client: Any, message: Message) -> None:
         """处理用户私聊消息（非命令）。"""
         user_id = message.from_user.id if message.from_user else message.chat.id
+        text_preview = (message.text or message.caption or "")[:80]
+        logger.info("guest_message", {"user_id": user_id, "text_preview": text_preview})
 
         # ⛔ 管理员消息跳过（管理员走 admin handler）
         if user_id in forward_svc.admin_ids:
@@ -39,11 +41,13 @@ def register(
 
         # 白名单用户直接转发
         if await security_svc.is_whitelisted(user_id):
+            logger.info("whitelist_hit", {"user_id": user_id})
             await forward_svc.forward_guest_message(message)
             return
 
         # 检查封禁
         if await security_svc.is_banned(user_id):
+            logger.warn("banned_blocked", {"user_id": user_id})
             await message.reply_text("🚫 您已被管理员拉黑，无法发送消息。")
             return
 
@@ -52,6 +56,7 @@ def register(
         if union_enabled in ("1", "true"):
             is_union_banned = await security_svc.check_union_ban(user_id)
             if is_union_banned:
+                logger.warn("union_ban_blocked", {"user_id": user_id})
                 await message.reply_text(
                     "🚫 <b>您已被联合封禁。</b>\n\n您的账号因违反服务条款被全局封禁。如有疑问，请联系管理员。",
                     parse_mode=ParseMode.HTML,
@@ -61,6 +66,7 @@ def register(
         # 检查欺诈
         is_fraud = await security_svc.check_fraud(user_id)
         if is_fraud:
+            logger.warn("fraud_detected", {"user_id": user_id})
             if forward_svc.admin_uid:
                 await bot.send_message(
                     forward_svc.admin_uid,
@@ -102,6 +108,8 @@ def register(
                     await message.reply_text(auto_reply)
                     await db.set_config(autoreply_key, "1")
 
+            topic_mode = await forward_svc.is_topic_forwarding_enabled()
+            logger.info("verified_forward", {"user_id": user_id, "topic_mode": topic_mode})
             await forward_svc.forward_guest_message(message)
             return
 
@@ -133,6 +141,7 @@ def register(
     async def on_start(client: Any, message: Message) -> None:
         """处理 /start 命令。"""
         user_id = message.from_user.id if message.from_user else message.chat.id
+        logger.info("start_command", {"user_id": user_id})
 
         # 白名单用户
         if await security_svc.is_whitelisted(user_id):
@@ -181,6 +190,7 @@ def register(
     async def on_guest_edit(client: Any, message: Message) -> None:
         """同步用户编辑消息到管理员。"""
         user_id = message.from_user.id if message.from_user else message.chat.id
+        logger.info("guest_edit", {"user_id": user_id})
         if user_id in forward_svc.admin_ids:
             return
         await forward_svc.sync_guest_edit(message)

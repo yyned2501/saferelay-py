@@ -11,7 +11,7 @@ import config as cfg
 from core.bot import Bot
 from core.database import Database
 from core.http import HttpClient
-from core.logger import get_logger
+from core.logger import get_logger, init_logger
 
 logger = get_logger("main")
 
@@ -21,9 +21,11 @@ async def amain() -> None:
     # 验证配置
     err = cfg.config.validate()
     if err:
-        logger.error("config_invalid", {"error": err})
         print(f"[ERROR] 配置错误: {err}")
         sys.exit(1)
+
+    # 初始化日志（文件 + 控制台）
+    init_logger()
 
     logger.info("starting_saferelay", {"admin_count": len(cfg.config.admin_ids)})
 
@@ -75,11 +77,11 @@ async def amain() -> None:
     logger.info("all_handlers_registered")
     print("[INFO] SafeRelay-Py 启动完成，等待消息...")
 
-    # 注册 Bot 命令列表
-    await bot.set_commands()
-
     # 启动 bot 并保持运行
     await bot.start()
+
+    # 注册 Bot 命令列表（需启动后）
+    await bot.set_commands()
     await idle()
     await bot.stop()
     await db.close()

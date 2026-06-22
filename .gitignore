@@ -23,6 +23,7 @@ Thumbs.db
 *.db-wal
 
 # Logs
+logs/
 *.log
 
 # Temp files
