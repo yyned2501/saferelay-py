@@ -88,6 +88,7 @@ class TopicManager:
         self, user_id: int, profile: Dict[str, Any] = None,
     ) -> Optional[Dict[str, Any]]:
         """确保用户有话题，如果没有则创建。"""
+        logger.info("ensure_user_topic", {"user_id": user_id, "has_profile": profile is not None})
         if not self.group_id:
             return None
 
@@ -128,6 +129,7 @@ class TopicManager:
         # 检查群组是否为论坛群组
         try:
             chat = await self.bot.get_chat(self.group_id)
+            logger.info("forum_check_result", {"group_id": self.group_id, "is_forum": chat.is_forum if chat else False})
             if not chat or not chat.is_forum:
                 logger.error("group_not_forum", {"group_id": self.group_id})
                 return None

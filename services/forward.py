@@ -87,6 +87,7 @@ class ForwardService:
     async def _do_forward(self, messages: List[Message], user_id: int) -> None:
         """执行转发。"""
         topic_mode = await self.is_topic_forwarding_enabled()
+        logger.info("do_forward", {"user_id": user_id, "topic_mode": topic_mode})
 
         if topic_mode:
             profile = {"first_name": messages[0].from_user.first_name if messages[0].from_user else "",
@@ -105,6 +106,7 @@ class ForwardService:
         if not self.admin_uid:
             return
         target = {"chat_id": self.admin_uid, "label": "admin_dm"}
+        logger.info("forward_to_admin", {"user_id": user_id, "admin_uid": self.admin_uid})
         for msg in messages:
             await self._forward_single(msg, user_id, target)
 
@@ -113,6 +115,7 @@ class ForwardService:
         if not self.group_id:
             return
         target = {"chat_id": self.group_id, "message_thread_id": thread_id, "label": "topic"}
+        logger.info("forward_to_topic", {"user_id": user_id, "thread_id": thread_id, "group_id": self.group_id})
         for msg in messages:
             await self._forward_single(msg, user_id, target)
 
@@ -124,6 +127,7 @@ class ForwardService:
                 message_thread_id=target.get("message_thread_id"),
             )
             if fwd:
+                logger.info("forward_single_ok", {"user_id": user_id, "fwd_id": fwd.id, "target_label": target.get("label")})
                 await self.db.store_forward_mapping(
                     fwd.id, user_id, msg.id,
                     target.get("chat_id"), target.get("message_thread_id"),
@@ -165,6 +169,12 @@ class ForwardService:
             mapping = await self.db.get_forward_mapping(reply.id)
             if mapping:
                 guest_chat_id = mapping["source_chat"]
+
+        logger.info("admin_reply", {
+            "source_chat": message.chat.id if message.chat else None,
+            "thread_id": message.message_thread_id,
+            "guest_chat_id": guest_chat_id,
+        })
 
         if not guest_chat_id:
             await message.reply_text("⚠️ 未找到原用户映射，可能消息太旧或被清理了缓存。")

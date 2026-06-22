@@ -62,6 +62,7 @@ class VerifyService:
 
     def create_challenge(self, user_id: int) -> Tuple[str, Dict[str, Any]]:
         """创建新的验证挑战，返回 (challenge_id, question)。"""
+        logger.info("create_challenge", {"user_id": user_id})
         question = random.choice(LOCAL_QUIZ_QUESTIONS)
         challenge = {
             "question": question,
@@ -89,19 +90,23 @@ class VerifyService:
         """
         challenge = self.get_challenge(user_id)
         if not challenge:
+            logger.info("verify_failed", {"user_id": user_id, "reason": "expired"})
             return {"success": False, "reason": "expired", "message": "验证已过期，请重新获取题目"}
 
         if challenge["attempts"] >= MAX_ATTEMPTS:
             self.delete_challenge(user_id)
+            logger.info("verify_failed", {"user_id": user_id, "reason": "max_attempts"})
             return {"success": False, "reason": "max_attempts", "message": "尝试次数过多，请重新获取题目"}
 
         challenge["attempts"] += 1
 
         if answer_index == challenge["correct_answer"]:
             self.delete_challenge(user_id)
+            logger.info("verify_success", {"user_id": user_id})
             return {"success": True}
 
         remaining = MAX_ATTEMPTS - challenge["attempts"]
+        logger.info("verify_failed", {"user_id": user_id, "reason": "wrong_answer", "remaining": remaining})
         return {
             "success": False,
             "reason": "wrong_answer",

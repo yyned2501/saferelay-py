@@ -31,6 +31,7 @@ def register(
     @bot.on_message(filters.command("menu") & filters.user(admin_ids))
     async def on_menu(client: Any, message: Message) -> None:
         """显示管理面板。"""
+        logger.info("admin_menu", {"admin_id": message.from_user.id if message.from_user else 0})
         welcome_msg = await db.get_config(CONFIG_WELCOME_MSG, "")
         auto_reply = await db.get_config(CONFIG_AUTO_REPLY_MSG, "")
         union_ban = await db.get_config(CONFIG_UNION_BAN, "0")
@@ -97,6 +98,7 @@ def register(
     @bot.on_message(filters.command("ban") & filters.user(admin_ids))
     async def on_ban(client: Any, message: Message) -> None:
         """封禁用户。"""
+        logger.info("admin_ban", {"admin_id": message.from_user.id if message.from_user else 0})
         target_id = await _get_target_id(message, db, forward_svc)
         if not target_id:
             await message.reply_text("⚠️ 格式错误。请回复用户消息发送 /ban，或发送 /ban 123456")
@@ -110,6 +112,7 @@ def register(
     @bot.on_message(filters.command("unban") & filters.user(admin_ids))
     async def on_unban(client: Any, message: Message) -> None:
         """解封用户。"""
+        logger.info("admin_unban", {"admin_id": message.from_user.id if message.from_user else 0})
         target_id = await _get_target_id(message, db, forward_svc)
         if not target_id:
             await message.reply_text("⚠️ 格式错误。请回复用户消息发送 /unban，或发送 /unban 123456")
@@ -122,6 +125,7 @@ def register(
     @bot.on_message(filters.command("trust") & filters.user(admin_ids))
     async def on_trust(client: Any, message: Message) -> None:
         """信任用户（白名单）。"""
+        logger.info("admin_trust", {"admin_id": message.from_user.id if message.from_user else 0})
         target_id = await _get_target_id(message, db, forward_svc)
         if not target_id:
             await message.reply_text("📋 请回复用户消息或发送 /trust 123456 来信任用户")
@@ -134,6 +138,7 @@ def register(
     @bot.on_message(filters.command("untrust") & filters.user(admin_ids))
     async def on_untrust(client: Any, message: Message) -> None:
         """取消信任。"""
+        logger.info("admin_untrust", {"admin_id": message.from_user.id if message.from_user else 0})
         target_id = await _get_target_id(message, db, forward_svc)
         if not target_id:
             await message.reply_text("📋 请回复用户消息或发送 /untrust 123456 来取消信任")
@@ -146,6 +151,7 @@ def register(
     @bot.on_message(filters.command("reset") & filters.user(admin_ids))
     async def on_reset(client: Any, message: Message) -> None:
         """重置用户验证状态。"""
+        logger.info("admin_reset", {"admin_id": message.from_user.id if message.from_user else 0})
         target_id = await _get_target_id(message, db, forward_svc)
         if not target_id:
             await message.reply_text("⚠️ 格式错误。请回复用户消息发送 /reset，或发送 /reset 123456")
@@ -167,6 +173,7 @@ def register(
     @bot.on_message(filters.command("welcome") & filters.user(admin_ids))
     async def on_welcome(client: Any, message: Message) -> None:
         """设置欢迎消息。"""
+        logger.info("admin_welcome", {"admin_id": message.from_user.id if message.from_user else 0})
         parts = message.text.split(maxsplit=1)
         if len(parts) < 2 or parts[1].strip() == "delete":
             await db.delete_config(CONFIG_WELCOME_MSG)
@@ -180,6 +187,7 @@ def register(
     @bot.on_message(filters.command("autoreply") & filters.user(admin_ids))
     async def on_autoreply(client: Any, message: Message) -> None:
         """设置自动回复。"""
+        logger.info("admin_autoreply", {"admin_id": message.from_user.id if message.from_user else 0})
         parts = message.text.split(maxsplit=1)
         if len(parts) < 2 or parts[1].strip() == "off":
             await db.delete_config(CONFIG_AUTO_REPLY_MSG)
@@ -193,6 +201,7 @@ def register(
     @bot.on_message(filters.command("broadcast") & filters.user(admin_ids))
     async def on_broadcast(client: Any, message: Message) -> None:
         """广播消息。"""
+        logger.info("admin_broadcast", {"admin_id": message.from_user.id if message.from_user else 0})
         parts = message.text.split(maxsplit=1)
         if len(parts) < 2:
             await message.reply_text("⚠️ 用法：/broadcast 消息内容\n\n支持 HTML 格式", parse_mode=ParseMode.HTML)
@@ -226,6 +235,7 @@ def register(
     @bot.on_message(filters.command("cleanup") & filters.user(admin_ids))
     async def on_cleanup(client: Any, message: Message) -> None:
         """清理失效话题。"""
+        logger.info("admin_cleanup", {"admin_id": message.from_user.id if message.from_user else 0})
         if not forward_svc.group_id:
             await message.reply_text("⚠️ 未配置 GROUP_ID，话题清理功能不可用。")
             return
@@ -237,6 +247,7 @@ def register(
     @bot.on_message(filters.command("cachestats") & filters.user(admin_ids))
     async def on_cachestats(client: Any, message: Message) -> None:
         """查看缓存统计。"""
+        logger.info("admin_cachestats", {"admin_id": message.from_user.id if message.from_user else 0})
         await message.reply_text("📊 缓存统计信息\n\n<i>当前版本使用 SQLite，缓存由数据库管理。</i>", parse_mode=ParseMode.HTML)
 
     ### ---- /clearcache ---- ###
@@ -244,6 +255,7 @@ def register(
     @bot.on_message(filters.command("clearcache") & filters.user(admin_ids))
     async def on_clearcache(client: Any, message: Message) -> None:
         """清空缓存。"""
+        logger.info("admin_clearcache", {"admin_id": message.from_user.id if message.from_user else 0})
         await message.reply_text("✅ 缓存已清空。")
 
     ### ---- 普通回复（管理员回复用户消息） ---- ###
@@ -251,11 +263,20 @@ def register(
     @bot.on_message(filters.user(admin_ids))
     async def on_admin_message(client: Any, message: Message) -> None:
         """处理管理员普通消息（回复转发消息）。"""
+        logger.info("admin_message", {
+            "chat_id": message.chat.id if message.chat else None,
+            "thread_id": message.message_thread_id,
+            "has_reply": message.reply_to_message is not None,
+        })
         await forward_svc.handle_admin_reply(message)
 
     @bot.on_edited_message(filters.user(admin_ids))
     async def on_admin_edit(client: Any, message: Message) -> None:
         """同步管理员编辑消息到用户。"""
+        logger.info("admin_edit", {
+            "chat_id": message.chat.id if message.chat else None,
+            "thread_id": message.message_thread_id,
+        })
         await forward_svc.sync_admin_edit(message)
 
     logger.info("admin_handlers_registered")

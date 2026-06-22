@@ -78,6 +78,8 @@ class SecurityService:
         if cached is not None:
             return cached
         banned = await self.db.is_banned(user_id)
+        if banned:
+            logger.warn("banned_hit", {"user_id": user_id})
         self._blocked_cache.set(f"blocked:{user_id}", banned, 60000)
         return banned
 
@@ -116,6 +118,8 @@ class SecurityService:
                 json={"user_id": str(user_id)},
             )
             banned = result.get("banned", False)
+            if banned:
+                logger.warn("union_ban_hit", {"user_id": user_id})
             self._union_ban_cache.set(f"union_ban:{user_id}", banned, 86400000)
             return banned
         except Exception as e:
@@ -155,6 +159,8 @@ class SecurityService:
             self._fraud_list = []
 
         is_fraud = str(user_id) in self._fraud_list
+        if is_fraud:
+            logger.warn("fraud_hit", {"user_id": user_id})
         self._fraud_cache.set(f"fraud:{user_id}", is_fraud)
         return is_fraud
 

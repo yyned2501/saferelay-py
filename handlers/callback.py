@@ -44,6 +44,8 @@ def register(
             await callback.answer("❌ 无效的选项", show_alert=True)
             return
 
+        logger.info("quiz_answer", {"user_id": user_id, "answer_index": answer_index})
+
         locked = await db.acquire_verify_lock(user_id, 60)
         if not locked:
             await callback.answer("⏳ 验证进行中，请稍后再试", show_alert=True)
@@ -53,6 +55,7 @@ def register(
             result = verify_svc.verify_answer(user_id, answer_index)
 
             if result["success"]:
+                logger.info("verify_success", {"user_id": user_id})
                 display_name = callback.from_user.first_name or callback.from_user.username or "Unknown"
                 await db.mark_verified(user_id, display_name)
                 pending_result = await forward_svc.process_pending(user_id)
@@ -94,6 +97,7 @@ def register(
                         ),
                     )
             else:
+                logger.info("verify_failed", {"user_id": user_id, "reason": result["reason"]})
                 if result["reason"] in ("expired", "max_attempts"):
                     try:
                         await bot.edit_message_text(
@@ -141,6 +145,7 @@ def register(
     async def on_admin_callback(client: Any, callback: CallbackQuery) -> None:
         """处理管理菜单导航。"""
         user_id = callback.from_user.id
+        logger.info("admin_callback", {"user_id": user_id, "data": callback.data})
         if not security_svc.is_admin(user_id):
             await callback.answer("无权限", show_alert=True)
             return
