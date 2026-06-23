@@ -166,7 +166,7 @@ class ForwardService:
                     await self.db.delete_pending_item(user_id, msg_id)
                     continue
 
-                # 先获取原始 Message 对象，再用 msg.copy() 复制到话题
+                # 确认消息存在（get_messages 返回 Message 或 None）
                 orig = await self.bot.get_messages(user_id, msg_id)
                 if not orig:
                     logger.warn("pending_forward_no_msg", {"user_id": user_id, "msg_id": msg_id})
@@ -174,8 +174,10 @@ class ForwardService:
                     await self.db.delete_pending_item(user_id, msg_id)
                     continue
 
-                fwd = await orig.copy(
-                    target["chat_id"],
+                # 使用 bot.copy_message（底层 client.copy_message）复制到话题
+                # 避免 msg.copy() 的 _client 绑定问题，同时不带转发标签
+                fwd = await self.bot.copy_message(
+                    target["chat_id"], user_id, msg_id,
                     message_thread_id=target.get("message_thread_id"),
                 )
                 # 存储 ForwardMapping（确保管理员回复能找到用户）
