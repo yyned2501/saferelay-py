@@ -218,6 +218,12 @@ class Bot:
         """发送聊天动作。"""
         return await self._client.send_chat_action(chat_id, action)
 
+    async def get_messages(
+        self, chat_id: Union[int, str], message_ids: Union[int, List[int]]
+    ) -> Optional[Union[Message, List[Message]]]:
+        """获取消息。"""
+        return await self._client.get_messages(chat_id, message_ids)
+
     # ---- 启动 ----
 
     async def start(self) -> None:
