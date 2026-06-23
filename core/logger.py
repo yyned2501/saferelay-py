@@ -67,6 +67,10 @@ class SafeRelayLogger:
             payload = data or {}
         self._log(logging.WARN, action, payload)
 
+    def warning(self, action: str, error_or_data: Any = None, data: Dict[str, Any] = None) -> None:
+        """warning 别名，兼容 logging 标准命名习惯。"""
+        self.warn(action, error_or_data, data)
+
     def error(self, action: str, error: Exception = None, data: Dict[str, Any] = None) -> None:
         payload = {"error": str(error) if error else "unknown", **(data or {})}
         self._log(logging.ERROR, action, payload)

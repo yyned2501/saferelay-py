@@ -231,28 +231,23 @@ class Bot:
         await self._client.stop()
 
     async def restart(self) -> None:
-        """重启 bot（进程级重启，替换当前进程）。
+        """重启 bot（启动新进程后立即退出当前进程）。
 
-        使用 os.execl 完全替换当前进程，确保 handler 重新注册、状态完全重置。
-        调用前应确保已保存所有必要状态。
+        注意：此方法通常在 callback handler 中调用，
+        不能 await client.stop()，否则 Pyrogram dispatcher 死锁。
         """
-        import os
+        import subprocess
         import sys
-        import asyncio
+        import os
 
-        logger.info("bot_restarting_via_execl")
+        logger.info("bot_restarting_via_subprocess")
 
-        # 1. 尝试优雅停止
-        try:
-            await self._client.stop()
-        except Exception as e:
-            logger.warning("bot_stop_before_restart_failed", {"error": str(e)})
+        cmd = [sys.executable] + sys.argv
+        logger.info("bot_restart_cmd", {"cmd": " ".join(cmd)})
 
-        # 2. 预留一点时间让日志输出 + 待处理 API 完成
-        await asyncio.sleep(1)
-
-        # 3. 重启进程（os.execl 替换当前进程，操作系统回收资源）
-        os.execl(sys.executable, sys.executable, *sys.argv)
+        # 启动新进程后立即退出当前进程
+        subprocess.Popen(cmd)
+        os._exit(0)
 
     def run(self) -> None:
         """启动 bot（阻塞，独立运行入口）。"""
