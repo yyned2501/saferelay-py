@@ -1,5 +1,6 @@
 """回调查询处理 — 验证答案、管理菜单导航。"""
 
+import asyncio
 from typing import Any
 
 from core.bot import Bot, ParseMode, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, filters
@@ -7,8 +8,8 @@ from core.database import Database
 from core.logger import get_logger
 from services.forward import ForwardService
 from services.menu import (
-    build_main_menu, build_spam_menu, build_union_menu,
-    build_welcome_menu, build_autoreply_menu, build_forward_menu,
+    build_main_menu, build_spam_menu,
+    build_welcome_menu, build_autoreply_menu,
     build_users_menu, build_stats_menu,
 )
 from services.security import SecurityService
@@ -123,10 +124,8 @@ def register(
 
         builders = {
             "submenu_spam": lambda: build_spam_menu(security_svc),
-            "submenu_union": lambda: build_union_menu(db),
             "submenu_welcome": lambda: build_welcome_menu(db),
             "submenu_autoreply": lambda: build_autoreply_menu(db),
-            "submenu_forward": lambda: build_forward_menu(forward_svc),
             "submenu_users": lambda: build_users_menu(db),
             "submenu_stats": lambda: build_stats_menu(stats_svc, db),
             "back_to_main": lambda: build_main_menu(db, forward_svc, security_svc),
@@ -141,7 +140,7 @@ def register(
         await bot.edit_message_text(chat_id, msg_id, text, parse_mode=ParseMode.HTML, reply_markup=keyboard)
         await callback.answer()
 
-    @bot.on_callback_query(filters.regex(r"^(submenu_|toggle_|back_to_|refresh_|users_|user_|forward_mode|reset_spam)"))
+    @bot.on_callback_query(filters.regex(r"^(submenu_|toggle_|back_to_|refresh_|users_|user_|reset_spam|restart_bot)"))
     async def on_admin_callback(client: Any, callback: CallbackQuery) -> None:
         """处理管理菜单导航。"""
         user_id = callback.from_user.id
@@ -166,22 +165,6 @@ def register(
             await callback.answer("已重置为默认规则")
             return await _show_submenu("submenu_spam", callback)
 
-        if data == "toggle_union":
-            current = await db.get_config("union_ban", "0")
-            new_val = "0" if current in ("1", "true") else "1"
-            await db.set_config("union_ban", new_val)
-            await callback.answer(f"{'已关闭' if new_val == '0' else '已开启'}联合封禁")
-            return await _show_submenu("submenu_union", callback)
-
-        if data.startswith("forward_mode:"):
-            mode = data.split(":", 1)[1]
-            if mode == forward_svc.FORWARD_MODE_TOPIC and not forward_svc.group_id:
-                await callback.answer("⚠️ 请先配置 GROUP_ID 环境变量", show_alert=True)
-                return
-            await forward_svc.set_forward_mode(mode)
-            await callback.answer(f"已切换到{'话题' if mode == forward_svc.FORWARD_MODE_TOPIC else '私聊'}模式")
-            return await _show_submenu("submenu_forward", callback)
-
         if data == "refresh_stats":
             await callback.answer("已刷新")
             return await _show_submenu("submenu_stats", callback)
@@ -189,6 +172,22 @@ def register(
         if data == "refresh_users":
             await callback.answer("已刷新")
             return await _show_submenu("submenu_users", callback)
+
+        if data == "restart_bot":
+            logger.info("restart_bot_requested", {"admin_id": user_id})
+            await callback.answer("🔄 正在重启 Bot...", show_alert=True)
+            try:
+                await bot.edit_message_text(
+                    chat_id, msg_id,
+                    "🔄 <b>Bot 正在重启...</b>\n\n<i>重启完成后将自动通知</i>",
+                    parse_mode=ParseMode.HTML,
+                )
+            except Exception:
+                pass
+            # 等待 Telegram API 调用完成后再重启
+            await asyncio.sleep(0.5)
+            await bot.restart()
+            return
 
         # 子菜单显示
         await _show_submenu(data, callback)

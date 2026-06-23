@@ -1,4 +1,4 @@
-"""安全服务 — 封禁、白名单、欺诈检测、联合封禁、垃圾过滤。"""
+"""安全服务 — 封禁、白名单、欺诈检测、垃圾过滤。"""
 
 import json
 import re
@@ -43,12 +43,9 @@ class SecurityService:
         self.admin_uid = admin_uid
         self._blocked_cache = TTLCache(default_ttl_ms=60000)
         self._whitelist_cache = TTLCache(default_ttl_ms=30000)
-        self._union_ban_cache = TTLCache(default_ttl_ms=86400000)
         self._fraud_cache = TTLCache(default_ttl_ms=3600000)
         self._user_profile_cache = TTLCache(default_ttl_ms=86400000)
 
-        # 联合封禁 API
-        self.union_ban_api = "https://verify.wzxabc.eu.org"
         self.fraud_db_url = "https://raw.githubusercontent.com/qianqi32/SafeRelay/main/data/fraud.db"
         self._fraud_list: Optional[List[str]] = None
         self._fraud_loaded_at: float = 0
@@ -103,28 +100,6 @@ class SecurityService:
         whitelisted = await self.db.is_whitelisted(user_id)
         self._whitelist_cache.set(f"whitelist:{user_id}", whitelisted)
         return whitelisted
-
-    # ---- 联合封禁 ----
-
-    async def check_union_ban(self, user_id: int) -> bool:
-        """检查联合封禁。"""
-        cached = self._union_ban_cache.get(f"union_ban:{user_id}")
-        if cached is not None:
-            return cached
-
-        try:
-            result = await self.http.post(
-                f"{self.union_ban_api}/check_ban",
-                json={"user_id": str(user_id)},
-            )
-            banned = result.get("banned", False)
-            if banned:
-                logger.warn("union_ban_hit", {"user_id": user_id})
-            self._union_ban_cache.set(f"union_ban:{user_id}", banned, 86400000)
-            return banned
-        except Exception as e:
-            logger.error("union_ban_check_failed", {"user_id": user_id, "error": str(e)})
-            return False
 
     # ---- 欺诈检测 ----
 

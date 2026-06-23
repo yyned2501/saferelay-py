@@ -13,7 +13,6 @@ logger = get_logger("handlers.admin")
 
 CONFIG_WELCOME_MSG = "welcome_msg"
 CONFIG_AUTO_REPLY_MSG = "auto_reply_msg"
-CONFIG_UNION_BAN = "union_ban"
 
 
 def register(
@@ -34,33 +33,27 @@ def register(
         logger.info("admin_menu", {"admin_id": message.from_user.id if message.from_user else 0})
         welcome_msg = await db.get_config(CONFIG_WELCOME_MSG, "")
         auto_reply = await db.get_config(CONFIG_AUTO_REPLY_MSG, "")
-        union_ban = await db.get_config(CONFIG_UNION_BAN, "0")
-        forward_mode = await forward_svc.get_forward_mode()
         spam_enabled = await security_svc.is_spam_enabled()
-
-        forward_status = "💬 话题" if forward_mode == forward_svc.FORWARD_MODE_TOPIC else "📥 私聊"
 
         text = (
             f"🛠 <b>SafeRelay 管理面板</b>\n\n"
             f"📊 <b>当前配置:</b>\n"
             f"🔸 📝 验证模式：本地题库\n"
             f"🔸 {'🟢' if spam_enabled else '🔴'} 垃圾过滤：{'已开启' if spam_enabled else '已关闭'}\n"
-            f"🔸 {'🟢' if union_ban in ('1', 'true') else '🔴'} 联合封禁：{'已开启' if union_ban in ('1', 'true') else '已关闭'}\n"
             f"🔸 {'🟢' if welcome_msg else '⚪️'} 欢迎消息：{'已设置' if welcome_msg else '未设置'}\n"
             f"🔸 {'🟢' if auto_reply else '⚪️'} 自动回复：{'已设置' if auto_reply else '未设置'}\n"
-            f"🔸 {forward_status} 转发模式：{forward_status}\n\n"
+            f"🔸 💬 转发模式：群聊话题\n\n"
             f"👇 点击下方按钮进入设置"
         )
 
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton("🗑 垃圾过滤", callback_data="submenu_spam"),
-                 InlineKeyboardButton("🌐 联合封禁", callback_data="submenu_union")],
-                [InlineKeyboardButton("👥 用户管理", callback_data="submenu_users"),
-                 InlineKeyboardButton("👋 欢迎消息", callback_data="submenu_welcome")],
-                [InlineKeyboardButton("🤖 自动回复", callback_data="submenu_autoreply"),
-                 InlineKeyboardButton("💬 转发模式", callback_data="submenu_forward")],
-                [InlineKeyboardButton("📊 统计信息", callback_data="submenu_stats")],
+                 InlineKeyboardButton("👥 用户管理", callback_data="submenu_users")],
+                [InlineKeyboardButton("👋 欢迎消息", callback_data="submenu_welcome"),
+                 InlineKeyboardButton("🤖 自动回复", callback_data="submenu_autoreply")],
+                [InlineKeyboardButton("📊 统计信息", callback_data="submenu_stats"),
+                 InlineKeyboardButton("🔄 重启 Bot", callback_data="restart_bot")],
             ]
         )
         await message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=keyboard)
@@ -260,9 +253,9 @@ def register(
 
     ### ---- 普通回复（管理员回复用户消息） ---- ###
 
-    @bot.on_message(filters.user(admin_ids))
+    @bot.on_message(filters.user(admin_ids) & filters.chat(forward_svc.group_id))
     async def on_admin_message(client: Any, message: Message) -> None:
-        """处理管理员普通消息（回复转发消息）。"""
+        """处理管理员在群组话题中的回复消息。"""
         logger.info("admin_message", {
             "chat_id": message.chat.id if message.chat else None,
             "thread_id": message.message_thread_id,
@@ -295,12 +288,6 @@ async def _get_target_id(
         uid = await db.get_user_by_thread(message.message_thread_id)
         if uid:
             return uid
-
-    # 从回复消息查找
-    if reply:
-        mapping = await db.get_forward_mapping(reply.id)
-        if mapping:
-            return mapping["source_chat"]
 
     # 从参数提取
     if len(parts) > 1:

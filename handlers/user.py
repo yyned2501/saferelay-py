@@ -15,7 +15,6 @@ logger = get_logger("handlers.user")
 # 配置键
 CONFIG_WELCOME_MSG = "welcome_msg"
 CONFIG_AUTO_REPLY_MSG = "auto_reply_msg"
-CONFIG_UNION_BAN = "union_ban"
 
 
 def register(
@@ -50,18 +49,6 @@ def register(
             logger.warn("banned_blocked", {"user_id": user_id})
             await message.reply_text("🚫 您已被管理员拉黑，无法发送消息。")
             return
-
-        # 检查联合封禁
-        union_enabled = await db.get_config(CONFIG_UNION_BAN, "0")
-        if union_enabled in ("1", "true"):
-            is_union_banned = await security_svc.check_union_ban(user_id)
-            if is_union_banned:
-                logger.warn("union_ban_blocked", {"user_id": user_id})
-                await message.reply_text(
-                    "🚫 <b>您已被联合封禁。</b>\n\n您的账号因违反服务条款被全局封禁。如有疑问，请联系管理员。",
-                    parse_mode=ParseMode.HTML,
-                )
-                return
 
         # 检查欺诈
         is_fraud = await security_svc.check_fraud(user_id)
@@ -108,8 +95,7 @@ def register(
                     await message.reply_text(auto_reply)
                     await db.set_config(autoreply_key, "1")
 
-            topic_mode = await forward_svc.is_topic_forwarding_enabled()
-            logger.info("verified_forward", {"user_id": user_id, "topic_mode": topic_mode})
+            logger.info("verified_forward", {"user_id": user_id})
             await forward_svc.forward_guest_message(message)
             return
 

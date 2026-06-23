@@ -9,60 +9,25 @@ from core.database import Database
 from core.logger import get_logger
 from services.forward_topic import MediaGroupCollector, TopicManager
 from services.forward_edit import EditSyncManager
-from utils.helpers import TTLCache
 
 logger = get_logger("services.forward")
 
 
 class ForwardService:
-    """消息转发服务。"""
-
-    FORWARD_MODE_DIRECT = "direct"
-    FORWARD_MODE_TOPIC = "topic"
+    """消息转发服务 — 仅支持群聊话题模式。"""
 
     def __init__(self, db: Database, bot: Bot, admin_ids: List[int],
-                 group_id: Optional[int] = None):
+                 group_id: int):
         self.db = db
         self.bot = bot
         self.admin_ids = admin_ids
         self.group_id = group_id
         self.admin_uid = admin_ids[0] if admin_ids else None
         self.media_collector = MediaGroupCollector()
-        self._mode_cache = TTLCache(default_ttl_ms=60000)
 
         # 子模块
         self.topic_mgr = TopicManager(db, bot, group_id)
         self.edit_sync = EditSyncManager(db, bot, self.admin_uid)
-
-    # ---- 转发模式 ----
-
-    async def get_forward_mode(self) -> str:
-        """获取转发模式。"""
-        cached = self._mode_cache.get("forward_mode")
-        if cached:
-            return cached
-        mode = await self.db.get_config("forward_mode", self.FORWARD_MODE_DIRECT)
-        mode = mode if mode in (self.FORWARD_MODE_DIRECT, self.FORWARD_MODE_TOPIC) else self.FORWARD_MODE_DIRECT
-        self._mode_cache.set("forward_mode", mode, 60000)
-        return mode
-
-    async def set_forward_mode(self, mode: str) -> str:
-        """设置转发模式。"""
-        mode = mode if mode in (self.FORWARD_MODE_DIRECT, self.FORWARD_MODE_TOPIC) else self.FORWARD_MODE_DIRECT
-        await self.db.set_config("forward_mode", mode)
-        self._mode_cache.set("forward_mode", mode)
-        return mode
-
-    async def is_topic_forwarding_enabled(self) -> bool:
-        """检查话题转发是否启用。"""
-        if not self.group_id or not self.admin_uid:
-            return False
-        mode = await self.get_forward_mode()
-        return mode == self.FORWARD_MODE_TOPIC
-
-    async def has_topic_prerequisites(self) -> bool:
-        """检查话题模式前置条件。"""
-        return bool(self.group_id and self.admin_uid)
 
     # ---- 话题创建和管理（委托至 TopicManager） ----
 
@@ -85,35 +50,20 @@ class ForwardService:
         await self.media_collector.collect(message, lambda msgs: self._do_forward(msgs, user_id))
 
     async def _do_forward(self, messages: List[Message], user_id: int) -> None:
-        """执行转发。"""
-        topic_mode = await self.is_topic_forwarding_enabled()
-        logger.info("do_forward", {"user_id": user_id, "topic_mode": topic_mode})
+        """执行转发到群聊话题。"""
+        logger.info("do_forward", {"user_id": user_id})
 
-        if topic_mode:
-            profile = {"first_name": messages[0].from_user.first_name if messages[0].from_user else "",
-                       "last_name": messages[0].from_user.last_name if messages[0].from_user else "",
-                       "username": messages[0].from_user.username if messages[0].from_user else ""}
-            topic = await self.ensure_user_topic(user_id, profile)
-            if topic and topic.get("thread_id"):
-                await self._forward_to_topic(messages, user_id, topic["thread_id"])
-                return
-
-        # 私聊模式（直接转发给管理员）
-        await self._forward_to_admin(messages, user_id)
-
-    async def _forward_to_admin(self, messages: List[Message], user_id: int) -> None:
-        """转发消息到管理员私聊。"""
-        if not self.admin_uid:
-            return
-        target = {"chat_id": self.admin_uid, "label": "admin_dm"}
-        logger.info("forward_to_admin", {"user_id": user_id, "admin_uid": self.admin_uid})
-        for msg in messages:
-            await self._forward_single(msg, user_id, target)
+        profile = {"first_name": messages[0].from_user.first_name if messages[0].from_user else "",
+                   "last_name": messages[0].from_user.last_name if messages[0].from_user else "",
+                   "username": messages[0].from_user.username if messages[0].from_user else ""}
+        topic = await self.ensure_user_topic(user_id, profile)
+        if topic and topic.get("thread_id"):
+            await self._forward_to_topic(messages, user_id, topic["thread_id"])
+        else:
+            logger.error("topic_forward_failed_no_thread", {"user_id": user_id})
 
     async def _forward_to_topic(self, messages: List[Message], user_id: int, thread_id: int) -> None:
         """转发消息到话题。"""
-        if not self.group_id:
-            return
         target = {"chat_id": self.group_id, "message_thread_id": thread_id, "label": "topic"}
         logger.info("forward_to_topic", {"user_id": user_id, "thread_id": thread_id, "group_id": self.group_id})
         for msg in messages:
@@ -153,22 +103,16 @@ class ForwardService:
     # ---- 管理员回复 ----
 
     async def handle_admin_reply(self, message: Message) -> None:
-        """处理管理员回复消息。"""
+        """处理管理员回复消息（仅话题模式）。"""
         reply = message.reply_to_message
         if not reply:
             return
 
         guest_chat_id = None
 
-        # 话题模式：通过话题 ID 查找用户
+        # 通过话题 ID 查找用户
         if message.chat and self.group_id and str(message.chat.id) == str(self.group_id) and message.message_thread_id:
             guest_chat_id = await self.db.get_user_by_thread(message.message_thread_id)
-
-        # 私聊模式：通过转发映射查找
-        if not guest_chat_id:
-            mapping = await self.db.get_forward_mapping(reply.id)
-            if mapping:
-                guest_chat_id = mapping["source_chat"]
 
         logger.info("admin_reply", {
             "source_chat": message.chat.id if message.chat else None,
@@ -213,15 +157,14 @@ class ForwardService:
         for item in pending:
             msg_id = item["message_id"]
             try:
-                topic_mode = await self.is_topic_forwarding_enabled()
-                if topic_mode:
-                    topic = await self.ensure_user_topic(user_id)
-                    if topic and topic.get("thread_id"):
-                        target = {"chat_id": self.group_id, "message_thread_id": topic["thread_id"]}
-                    else:
-                        target = {"chat_id": self.admin_uid}
+                topic = await self.ensure_user_topic(user_id)
+                if topic and topic.get("thread_id"):
+                    target = {"chat_id": self.group_id, "message_thread_id": topic["thread_id"]}
                 else:
-                    target = {"chat_id": self.admin_uid}
+                    logger.error("pending_forward_no_topic", {"user_id": user_id})
+                    failed += 1
+                    await self.db.delete_pending_item(user_id, msg_id)
+                    continue
 
                 fwd_messages = await self.bot.forward_messages(
                     target["chat_id"], user_id, msg_id,

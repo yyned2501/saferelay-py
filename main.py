@@ -8,7 +8,7 @@ import sys
 from pyrogram import idle
 
 import config as cfg
-from core.bot import Bot
+from core.bot import Bot, ParseMode
 from core.database import Database
 from core.http import HttpClient
 from core.logger import get_logger, init_logger
@@ -79,6 +79,19 @@ async def amain() -> None:
 
     # 启动 bot 并保持运行
     await bot.start()
+
+    # 发送启动通知给所有管理员
+    import datetime
+    startup_msg = (
+        f"✅ <b>SafeRelay 已启动</b>\n\n"
+        f"⏰ <code>{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</code>"
+    )
+    for admin_id in cfg.config.admin_ids:
+        try:
+            await bot.send_message(admin_id, startup_msg, parse_mode=ParseMode.HTML)
+            logger.info("startup_notify_sent", {"admin_id": admin_id})
+        except Exception as e:
+            logger.error("startup_notify_failed", {"admin_id": admin_id, "error": str(e)})
 
     # 注册 Bot 命令列表（需启动后）
     await bot.set_commands()

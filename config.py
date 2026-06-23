@@ -43,11 +43,6 @@ class Config:
             "https://raw.githubusercontent.com/qianqi32/SafeRelay/main/data/fraud.db",
         )
 
-        # 联合封禁 API
-        self.union_ban_api_url: str = os.getenv(
-            "UNION_BAN_API_URL", "https://verify.wzxabc.eu.org"
-        )
-
         # 验证有效期 (秒)，默认 7 天
         self.verification_ttl: int = int(os.getenv("VERIFICATION_TTL", str(60 * 60 * 24 * 7)))
 
@@ -67,9 +62,6 @@ class Config:
 
         # 验证锁超时 (秒)
         self.verify_lock_ttl: int = 60
-
-        # 联合封禁缓存 (秒)
-        self.union_ban_cache_ttl: int = 86400
 
         # 欺诈数据库缓存 (秒)
         self.fraud_cache_ttl: int = 3600
@@ -100,6 +92,8 @@ class Config:
             errors.append("BOT_TOKEN is required")
         if not self.admin_ids:
             errors.append("ADMIN_IDS is required")
+        if not self.group_id:
+            errors.append("GROUP_ID is required (群聊话题模式必须配置论坛群组ID)")
         if self.bot_token and ":" not in self.bot_token:
             errors.append("BOT_TOKEN should be in format: 123456:ABC-DEF...")
         return "; ".join(errors)
